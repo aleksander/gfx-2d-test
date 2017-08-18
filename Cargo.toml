@@ -1,0 +1,9 @@
+[package]
+name = "gfx-2d-test"
+version = "0.1.0"
+authors = ["Aleksander Usov <aleksander.usov@gmail.com>"]
+
+[dependencies]
+gfx = "*"
+gfx_window_glutin = "*"
+glutin = "*"
