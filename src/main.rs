@@ -10,36 +10,80 @@ use gfx::format::Srgba8;
 use gfx::format::DepthStencil;
 
 use glutin::GlContext;
+use glutin::WindowEvent::{KeyboardInput, Closed, Resized};
+use glutin::VirtualKeyCode::Escape;
 
 const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
+const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
+
+const SQUARE: [Vertex; 4] = [
+    Vertex { pos: [0.5, -0.5], color: WHITE },
+    Vertex { pos: [-0.5, -0.5], color: WHITE },
+    Vertex { pos: [-0.5, 0.5], color: WHITE },
+    Vertex { pos: [0.5, 0.5], color: WHITE },
+];
+
+const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
+
+gfx_defines! {
+    vertex Vertex {
+        pos: [f32; 2] = "a_Pos",
+        color: [f32; 3] = "a_Color",
+    }
+
+    constant Locals {
+        view: [[f32; 2];2] = "u_view",
+    }
+
+    pipeline pipe {
+        vbuf: gfx::VertexBuffer<Vertex> = (),
+        locals: gfx::ConstantBuffer<Locals> = "Locals",
+        out: gfx::RenderTarget<Srgba8> = "Target0",
+    }
+}
+
+const LOCALS: Locals = Locals {
+    view: [[1.0, 1.0],
+           [1.0, 1.0]]
+};
 
 pub fn main() {
     let mut events_loop = glutin::EventsLoop::new();
     let context = glutin::ContextBuilder::new();
     let builder = glutin::WindowBuilder::new()
-        .with_title("Square Toy".to_string())
-        .with_dimensions(800, 800);
+        .with_title("".to_string())
+        .with_dimensions(100, 100);
 
-    let (window, mut device, mut factory, mut main_color, mut main_depth) =
+    let (window, mut device, mut factory, main_color, mut main_depth) =
         gfx_window_glutin::init::<Srgba8, DepthStencil>(builder, context, &events_loop);
 
     let mut encoder: gfx::Encoder<_, _> = factory.create_command_buffer().into();
+    let pso = factory.create_pipeline_simple(
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/rect_150.glslv")),
+        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/rect_150.glslf")),
+        pipe::new()
+    ).unwrap();
+
+    let (vertex_buffer, slice) = factory.create_vertex_buffer_with_slice(&SQUARE, INDICES);
+    let locals_buffer = factory.create_constant_buffer(4);
+    //let transform_buffer = factory.create_upload_buffer(1).unwrap();
+    let mut data = pipe::Data {
+        vbuf: vertex_buffer,
+        //transform: [[1.0,1.0],[1.0,1.0]],//transform_buffer,
+        locals: locals_buffer,
+        out: main_color
+    };
 
     let mut running = true;
     while running {
         events_loop.poll_events(|event| {
             match event {
-                glutin::Event::WindowEvent {window_id, event} => {
+                glutin::Event::WindowEvent {event,..} => {
                     match event {
-                        glutin::WindowEvent::KeyboardInput{device_id, input} => {
-                            match input {
-                                glutin::KeyboardInput{_:scancode, state, Some(glutin::VirtualKeyCode::Escape), modifiers} => running = false,
-                                _ => ()
-                            }
-                        }
-                        glutin::WindowEvent::Closed => running = false,
-                        glutin::WindowEvent::Resized(_, _) => {
-                            gfx_window_glutin::update_views(&window, &mut main_color, &mut main_depth);
+                        KeyboardInput{input:glutin::KeyboardInput{virtual_keycode:Some(Escape),..},..} => running = false,
+                        Closed => running = false,
+                        Resized(_, _) => {
+                            gfx_window_glutin::update_views(&window, &mut data.out, &mut main_depth);
                         },
                         _ => (),
                     }
@@ -48,8 +92,12 @@ pub fn main() {
             }
         });
 
-        encoder.clear(&main_color, BLACK);
+        encoder.clear(&data.out, BLACK);
+        //encoder.update_buffer(&data.locals, &[LOCALS], 0).expect("update_buffer");
+        encoder.update_constant_buffer(&data.locals, &LOCALS);
+        encoder.draw(&slice, &pso, &data);
         encoder.flush(&mut device);
+
         window.swap_buffers().unwrap();
         device.cleanup();
     }
