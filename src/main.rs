@@ -27,24 +27,26 @@ const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 
 gfx_defines! {
     vertex Vertex {
-        pos: [f32; 2] = "a_Pos",
-        color: [f32; 3] = "a_Color",
+        pos: [f32; 2] = "pos",
+        color: [f32; 3] = "color",
     }
 
-    constant Locals {
-        view: [[f32; 2];2] = "u_view",
+    constant Globals {
+        view: [[f32; 2]; 2] = "view",
     }
 
     pipeline pipe {
         vbuf: gfx::VertexBuffer<Vertex> = (),
-        locals: gfx::ConstantBuffer<Locals> = "Locals",
+        globals: gfx::ConstantBuffer<Globals> = "Globals",
         out: gfx::RenderTarget<Srgba8> = "Target0",
     }
 }
 
-const LOCALS: Locals = Locals {
-    view: [[0.1, 0.2],
-           [0.4, 0.8]]
+const GLOBALS: Globals = Globals {
+    view: [
+        [1.0, 0.0],
+        [0.0, 1.0],
+    ]
 };
 
 pub fn main() {
@@ -52,7 +54,7 @@ pub fn main() {
     let context = glutin::ContextBuilder::new();
     let builder = glutin::WindowBuilder::new()
         .with_title("".to_string())
-        .with_dimensions(100, 100);
+        .with_dimensions(300, 300);
 
     let (window, mut device, mut factory, main_color, mut main_depth) =
         gfx_window_glutin::init::<Srgba8, DepthStencil>(builder, context, &events_loop);
@@ -65,10 +67,10 @@ pub fn main() {
     ).unwrap();
 
     let (vertex_buffer, slice) = factory.create_vertex_buffer_with_slice(&SQUARE, INDICES);
-    let locals_buffer = factory.create_constant_buffer(1);
+    let globals_buffer = factory.create_constant_buffer(1);
     let mut data = pipe::Data {
         vbuf: vertex_buffer,
-        locals: locals_buffer,
+        globals: globals_buffer,
         out: main_color
     };
 
@@ -91,7 +93,7 @@ pub fn main() {
         });
 
         encoder.clear(&data.out, BLACK);
-        encoder.update_constant_buffer(&data.locals, &LOCALS);
+        encoder.update_constant_buffer(&data.globals, &GLOBALS);
         encoder.draw(&slice, &pso, &data);
         encoder.flush(&mut device);
 
