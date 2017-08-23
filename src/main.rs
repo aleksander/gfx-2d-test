@@ -43,8 +43,8 @@ gfx_defines! {
 }
 
 const LOCALS: Locals = Locals {
-    view: [[1.0, 1.0],
-           [1.0, 1.0]]
+    view: [[0.1, 0.2],
+           [0.4, 0.8]]
 };
 
 pub fn main() {
@@ -65,11 +65,9 @@ pub fn main() {
     ).unwrap();
 
     let (vertex_buffer, slice) = factory.create_vertex_buffer_with_slice(&SQUARE, INDICES);
-    let locals_buffer = factory.create_constant_buffer(4);
-    //let transform_buffer = factory.create_upload_buffer(1).unwrap();
+    let locals_buffer = factory.create_constant_buffer(1);
     let mut data = pipe::Data {
         vbuf: vertex_buffer,
-        //transform: [[1.0,1.0],[1.0,1.0]],//transform_buffer,
         locals: locals_buffer,
         out: main_color
     };
@@ -93,7 +91,6 @@ pub fn main() {
         });
 
         encoder.clear(&data.out, BLACK);
-        //encoder.update_buffer(&data.locals, &[LOCALS], 0).expect("update_buffer");
         encoder.update_constant_buffer(&data.locals, &LOCALS);
         encoder.draw(&slice, &pso, &data);
         encoder.flush(&mut device);
