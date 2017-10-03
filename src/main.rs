@@ -6,21 +6,17 @@ extern crate glutin;
 use gfx::traits::FactoryExt;
 use gfx::Device;
 
-use gfx::format::Srgba8;
+use gfx::format::Rgba8;
 use gfx::format::DepthStencil;
 
 use glutin::GlContext;
-use glutin::WindowEvent::{KeyboardInput, Closed, Resized};
-use glutin::VirtualKeyCode::Escape;
-
-const BLACK: [f32; 4] = [0.0, 0.0, 0.0, 1.0];
-const WHITE: [f32; 3] = [1.0, 1.0, 1.0];
+use glutin::WindowEvent::Closed;
 
 const SQUARE: [Vertex; 4] = [
-    Vertex { pos: [0.5, -0.5], color: WHITE },
-    Vertex { pos: [-0.5, -0.5], color: WHITE },
-    Vertex { pos: [-0.5, 0.5], color: WHITE },
-    Vertex { pos: [0.5, 0.5], color: WHITE },
+    Vertex { pos: [0.5, -0.5] },
+    Vertex { pos: [-0.5, -0.5] },
+    Vertex { pos: [-0.5, 0.5] },
+    Vertex { pos: [0.5, 0.5] },
 ];
 
 const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
@@ -28,7 +24,6 @@ const INDICES: &[u16] = &[0, 1, 2, 2, 3, 0];
 gfx_defines! {
     vertex Vertex {
         pos: [f32; 2] = "pos",
-        color: [f32; 3] = "color",
     }
 
     constant Globals {
@@ -38,37 +33,58 @@ gfx_defines! {
     pipeline pipe {
         vbuf: gfx::VertexBuffer<Vertex> = (),
         globals: gfx::ConstantBuffer<Globals> = "Globals",
-        out: gfx::RenderTarget<Srgba8> = "Target0",
+        out: gfx::RenderTarget<Rgba8> = "Target0",
     }
 }
 
 const GLOBALS: Globals = Globals {
     view: [
-        [1.0, 0.0],
-        [0.0, 1.0],
+        [1.0, 1.0],
+        [1.0, 1.0],
     ]
 };
 
 pub fn main() {
     let mut events_loop = glutin::EventsLoop::new();
     let context = glutin::ContextBuilder::new();
-    let builder = glutin::WindowBuilder::new()
-        .with_title("".to_string())
-        .with_dimensions(300, 300);
+    let builder = glutin::WindowBuilder::new();
 
-    let (window, mut device, mut factory, main_color, mut main_depth) =
-        gfx_window_glutin::init::<Srgba8, DepthStencil>(builder, context, &events_loop);
+    let (window, mut device, mut factory, main_color, _) =
+        gfx_window_glutin::init::<Rgba8, DepthStencil>(builder, context, &events_loop);
 
     let mut encoder: gfx::Encoder<_, _> = factory.create_command_buffer().into();
     let pso = factory.create_pipeline_simple(
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/rect_150.glslv")),
-        include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/shaders/rect_150.glslf")),
+        "
+            #version 150 core
+
+            in vec2 pos;
+            out vec4 v_color;
+
+            uniform Globals {
+                mat2 view;
+            };
+
+            void main() {
+                v_color = vec4(view[0][0], view[1][0], view[0][1], view[1][1]);
+                gl_Position = vec4(pos, 0.0, 1.0);
+            }
+        ".as_bytes(),
+        "        
+            #version 150 core
+
+            in vec4 v_color;
+            out vec4 Target0;
+
+            void main() {
+                Target0 = v_color;
+            }
+        ".as_bytes(),
         pipe::new()
     ).unwrap();
 
     let (vertex_buffer, slice) = factory.create_vertex_buffer_with_slice(&SQUARE, INDICES);
     let globals_buffer = factory.create_constant_buffer(1);
-    let mut data = pipe::Data {
+    let data = pipe::Data {
         vbuf: vertex_buffer,
         globals: globals_buffer,
         out: main_color
@@ -77,26 +93,15 @@ pub fn main() {
     let mut running = true;
     while running {
         events_loop.poll_events(|event| {
-            match event {
-                glutin::Event::WindowEvent {event,..} => {
-                    match event {
-                        KeyboardInput{input:glutin::KeyboardInput{virtual_keycode:Some(Escape),..},..} => running = false,
-                        Closed => running = false,
-                        Resized(_, _) => {
-                            gfx_window_glutin::update_views(&window, &mut data.out, &mut main_depth);
-                        },
-                        _ => (),
-                    }
-                }
-                _ => (),
+            if let glutin::Event::WindowEvent {event: Closed, ..} = event {
+                running = false;
             }
         });
 
-        encoder.clear(&data.out, BLACK);
+        encoder.clear(&data.out, [0.0, 0.0, 0.0, 1.0]);
         encoder.update_constant_buffer(&data.globals, &GLOBALS);
         encoder.draw(&slice, &pso, &data);
         encoder.flush(&mut device);
-
         window.swap_buffers().unwrap();
         device.cleanup();
     }
